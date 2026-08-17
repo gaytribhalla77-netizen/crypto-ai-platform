@@ -1,4 +1,5 @@
 import './ui.css';
+import VoiceAssistantDock from './components/VoiceAssistantDock';
 
 export const metadata = {
   title: 'IQ200 — Adaptive Market Intelligence',
@@ -6,5 +7,5 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body>{children}<VoiceAssistantDock /></body></html>;
 }
