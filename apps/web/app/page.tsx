@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import RealtimeMonitor from './components/RealtimeMonitor';
-import VoiceAssistantDock from './components/VoiceAssistantDock';
 
 type Json = Record<string, any>;
 type ModuleId = 'overview'|'market'|'council'|'twin'|'memory'|'lab'|'execution'|'audit';
@@ -20,6 +19,11 @@ const modules: {id: ModuleId; label: string; icon: string; desc: string}[] = [
 
 const agents = ['Technical','ML','Macro','News','Sentiment','Liquidity','Regime','Risk','Execution'];
 
+// Fix: this used to read NEXT_PUBLIC_API_URL, which is never set anywhere
+// in the repo (.env.local.example and lib/api.ts both use
+// NEXT_PUBLIC_API_BASE), so the dashboard silently fell back to
+// localhost:8000 in every deployed environment. Aligned to the variable
+// name that's actually documented and set.
 function apiBase(){ return (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/,''); }
 
 async function getJson(path:string){
@@ -29,7 +33,9 @@ async function getJson(path:string){
   return body;
 }
 
-function safeJson(value:any){ try{return JSON.stringify(value,null,2)}catch{return String(value)} }
+function safeJson(value:any){
+  try{return JSON.stringify(value,null,2)}catch{return String(value)}
+}
 
 export default function Home(){
   const [active,setActive]=useState<ModuleId>('overview');
@@ -55,7 +61,8 @@ export default function Home(){
     if(p.status==='fulfilled') setProviders(p.value); else setProviders(null);
     if(c.status==='fulfilled') setCert(c.value); else setCert(null);
     if(m.status==='fulfilled') setMarket(m.value); else setMarket(null);
-    if(results.some(x=>x.status==='rejected')) setError('Some real backend evidence is unavailable. The UI will not synthesize replacement market values.');
+    const failures=results.filter(x=>x.status==='rejected');
+    if(failures.length) setError('Some real backend evidence is unavailable. The UI will not synthesize replacement market values.');
     setBusy(false);
   },[symbol]);
 
@@ -79,38 +86,91 @@ export default function Home(){
         <button className="icon-btn" onClick={refresh} disabled={busy} aria-label="Refresh">{busy?'…':'↻'}</button>
       </div>
     </header>
+
     <div className="layout">
       <aside className="sidebar glass">
         <div className="side-label">COMMAND LAYERS</div>
-        <nav>{modules.map(m=><button key={m.id} className={`nav-item ${active===m.id?'active':''}`} onClick={()=>setActive(m.id)}><span className="nav-icon">{m.icon}</span><span>{m.label}</span><i/></button>)}</nav>
+        <nav>{modules.map(m=><button key={m.id} className={`nav-item ${active===m.id?'active':''}`} onClick={()=>setActive(m.id)}>
+          <span className="nav-icon">{m.icon}</span><span>{m.label}</span><i/>
+        </button>)}</nav>
         <div className="side-bottom">
           <div className="guard-card"><span className="shield">⬡</span><div><b>FAIL-CLOSED</b><small>Risk engine is final authority</small></div></div>
           <div className="mini-runtime"><span>WORKERS</span><b>{workers?'RUNNING':'OFF'}</b></div>
           <div className="mini-runtime"><span>LIVE MONEY</span><b className={live?'danger':''}>{live?'ENABLED':'BLOCKED'}</b></div>
         </div>
       </aside>
+
       <section className="content">
-        <div className="hero-row"><div><div className="eyebrow">AUTONOMOUS TRADING COCKPIT / {module.label.toUpperCase()}</div><h1>{module.label}<span>.</span></h1><p>{module.desc}. <b>Evidence-first:</b> unavailable providers remain visibly unverified.</p></div><div className="hero-actions"><label className="symbol-input"><span>ASSET</span><input value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&refresh()} /></label><span className="hero-chip"><span className="pulse"/> LIVE TELEMETRY</span></div></div>
+        <div className="hero-row">
+          <div><div className="eyebrow">AUTONOMOUS TRADING COCKPIT / {module.label.toUpperCase()}</div>
+            <h1>{module.label}<span>.</span></h1><p>{module.desc}. <b>Evidence-first:</b> unavailable providers remain visibly unverified.</p>
+          </div>
+          <div className="hero-actions">
+            <label className="symbol-input"><span>ASSET</span><input value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&refresh()} /></label>
+            <span className="hero-chip"><span className="pulse"/> LIVE TELEMETRY</span>
+          </div>
+        </div>
+
         {error&&<div className="notice glass">⚠ {error}</div>}
-        <div className="metric-grid"><Metric title="RUNTIME" value={online?'ONLINE':'OFFLINE'} state={online?'good':'warn'} sub="GET /health"/><Metric title="LIVE TRADING" value={live?'ENABLED':'BLOCKED'} state={live?'warn':'good'} sub={live?'External money path active':'Fail-closed default'}/><Metric title="PROVIDERS" value={providerCount(providers)} state={providers?'good':'warn'} sub="Real configuration status"/><Metric title="EVIDENCE" value={cert?`${cert.items?.length??0} GATES`:'UNAVAILABLE'} state={cert?'good':'warn'} sub="External certification plan"/></div>
-        {active==='overview'&&<Overview health={health} providers={providers} cert={cert} market={market} symbol={symbol}/>} {active==='market'&&<Market market={market} health={health} symbol={symbol}/>} {active==='council'&&<Council symbol={symbol}/>} {active==='twin'&&<Twin/>} {active==='memory'&&<Memory/>} {active==='lab'&&<Lab/>} {active==='execution'&&<Execution health={health} providers={providers}/>} {active==='audit'&&<Audit cert={cert}/>} 
+
+        <div className="metric-grid">
+          <Metric title="RUNTIME" value={online?'ONLINE':'OFFLINE'} state={online?'good':'warn'} sub="GET /health"/>
+          <Metric title="LIVE TRADING" value={live?'ENABLED':'BLOCKED'} state={live?'warn':'good'} sub={live?'External money path active':'Fail-closed default'}/>
+          <Metric title="PROVIDERS" value={providerCount(providers)} state={providers?'good':'warn'} sub="Real configuration status"/>
+          <Metric title="EVIDENCE" value={cert?`${cert.items?.length??0} GATES`:'UNAVAILABLE'} state={cert?'good':'warn'} sub="External certification plan"/>
+        </div>
+
+        {active==='overview'&&<Overview health={health} providers={providers} cert={cert} market={market} symbol={symbol} />}
+        {active==='market'&&<Market market={market} health={health} symbol={symbol}/>}
+        {active==='council'&&<Council symbol={symbol}/>}
+        {active==='twin'&&<Twin/>}
+        {active==='memory'&&<Memory/>}
+        {active==='lab'&&<Lab/>}
+        {active==='execution'&&<Execution health={health} providers={providers}/>}
+        {active==='audit'&&<Audit cert={cert}/>}
       </section>
     </div>
-    <VoiceAssistantDock />
   </main>;
 }
 
-function providerCount(p:any){if(!p)return '—';return `${['ai','binance','oanda'].map(k=>p[k]?.configured===true).filter(Boolean).length}/3`;}
-function Metric({title,value,sub,state}:{title:string,value:string,sub:string,state:string}){return <div className="metric glass"><div className="metric-head"><span>{title}</span><i className={`metric-state ${state}`}/></div><strong>{value}</strong><small>{sub}</small></div>;}
+function providerCount(p:any){
+  if(!p)return '—';
+  const vals=['ai','binance','oanda'].map(k=>p[k]?.configured===true).filter(Boolean).length;
+  return `${vals}/3`;
+}
+function Metric({title,value,sub,state}:{title:string,value:string,sub:string,state:string}){
+ return <div className="metric glass"><div className="metric-head"><span>{title}</span><i className={`metric-state ${state}`}/></div><strong>{value}</strong><small>{sub}</small></div>;
+}
 function Panel({children,className=''}:{children:any,className?:string}){return <section className={`panel glass ${className}`}>{children}</section>}
 function Head({kicker,title,badge}:{kicker:string,title:string,badge?:string}){return <div className="panel-head"><div><span className="kicker">{kicker}</span><h2>{title}</h2></div>{badge&&<span className="live-pill"><i/>{badge}</span>}</div>}
 function Status({ok,children}:{ok:boolean,children:any}){return <span className={`state ${ok?'ok':'pending'}`}><i/>{children}</span>}
-function Overview({health,providers,cert,market,symbol}:{health:any,providers:any,cert:any,market:any,symbol:string}){return <div className="dashboard-grid"><Panel className="hero-panel"><Head kicker="SYSTEM CORE" title="Evidence matrix" badge="REAL INPUTS"/><div className="core-layout"><div className="core-reactor"><div className="reactor-ring r1"/><div className="reactor-ring r2"/><div className="reactor-core"><b>IQ200</b><small>{health?.fail_closed?'FAIL-CLOSED':'VERIFYING'}</small></div></div><div className="evidence-list">{[['API',health?.status==='ok'],['RISK ENGINE',Boolean(health?.risk_engine)],['FAIL-CLOSED',health?.fail_closed===true],['TESTNET',health?.testnet===true],['AI PROVIDER',providers?.ai?.configured===true],['BROKER',Boolean(providers?.binance?.configured||providers?.oanda?.configured)]].map(([n,v])=><div className="evidence-row" key={String(n)}><span>{n}</span><Status ok={Boolean(v)}>{v?'VERIFIED':'UNVERIFIED'}</Status></div>)}</div></div></Panel><Panel><Head kicker="MARKET SNAPSHOT" title={symbol} badge={market?'CONNECTED':'WAITING'}/><DataCards data={market}/></Panel><Panel><Head kicker="PROVIDER MATRIX" title="Connectivity" badge="NO SYNTHETICS"/><ProviderMatrix providers={providers}/></Panel><Panel><Head kicker="CERTIFICATION" title="External evidence gates"/><div className="cert-list">{(cert?.items||[]).slice(0,7).map((x:any,i:number)=><div className="cert-row" key={i}><span>{String(i+1).padStart(2,'0')}</span><b>{x.name||x.title||'Certification gate'}</b><em>{x.status||'REQUIRES EXTERNAL EVIDENCE'}</em></div>)}</div>{!cert&&<Empty text="Certification plan unavailable from backend."/>}</Panel></div>}
-function Market({market,health,symbol}:{market:any,health:any,symbol:string}){return <div className="dashboard-grid"><Panel className="wide"><Head kicker="REAL MARKET EVIDENCE" title={symbol} badge={market?'LIVE RESPONSE':'UNVERIFIED'}/><RealtimeMonitor symbol={symbol}/><DataCards data={market}/><div className="signal-strip"><Signal n="REGIME" v={market?.regime}/><Signal n="SPREAD" v={market?.spread}/><Signal n="ORDER FLOW" v={market?.order_flow}/><Signal n="FRESHNESS" v={market?.timestamp||market?.time}/></div><pre className="evidence-json">{market?safeJson(market):'No provider response. No synthetic candles/prices/signals are rendered.'}</pre></Panel><Panel><Head kicker="RUNTIME" title="Backend truth"/><pre className="evidence-json">{safeJson(health||{status:'unavailable'})}</pre></Panel></div>}
-function DataCards({data}:{data:any}){const keys=data?Object.keys(data).slice(0,6):[];return <div className="data-cards">{keys.map(k=><div className="data-card" key={k}><span>{k.replace(/_/g,' ').toUpperCase()}</span><b>{typeof data[k]==='object'?'{…}':String(data[k])}</b></div>)}</div>}
+
+function Overview({health,providers,cert,market,symbol}:{health:any,providers:any,cert:any,market:any,symbol:string}){
+ return <div className="dashboard-grid">
+  <Panel className="hero-panel"><Head kicker="SYSTEM CORE" title="Evidence matrix" badge="REAL INPUTS"/>
+   <div className="core-layout"><div className="core-reactor"><div className="reactor-ring r1"/><div className="reactor-ring r2"/><div className="reactor-core"><b>IQ200</b><small>{health?.fail_closed?'FAIL-CLOSED':'VERIFYING'}</small></div></div>
+   <div className="evidence-list">{[['API',health?.status==='ok'],['RISK ENGINE',Boolean(health?.risk_engine)],['FAIL-CLOSED',health?.fail_closed===true],['TESTNET',health?.testnet===true],['AI PROVIDER',providers?.ai?.configured===true],['BROKER',Boolean(providers?.binance?.configured||providers?.oanda?.configured)]].map(([n,v])=><div className="evidence-row" key={String(n)}><span>{n}</span><Status ok={Boolean(v)}>{v?'VERIFIED':'UNVERIFIED'}</Status></div>)}</div></div>
+  </Panel>
+  <Panel><Head kicker="MARKET SNAPSHOT" title={symbol} badge={market?'CONNECTED':'WAITING'}/><DataCards data={market}/></Panel>
+  <Panel><Head kicker="PROVIDER MATRIX" title="Connectivity" badge="NO SYNTHETICS"/><ProviderMatrix providers={providers}/></Panel>
+  <Panel><Head kicker="CERTIFICATION" title="External evidence gates"/><div className="cert-list">{(cert?.items||[]).slice(0,7).map((x:any,i:number)=><div className="cert-row" key={i}><span>{String(i+1).padStart(2,'0')}</span><b>{x.name||x.title||'Certification gate'}</b><em>{x.status||'REQUIRES EXTERNAL EVIDENCE'}</em></div>)}</div>{!cert&&<Empty text="Certification plan unavailable from backend."/>}</Panel>
+ </div>
+}
+function Market({market,health,symbol}:{market:any,health:any,symbol:string}){
+ return <div className="dashboard-grid"><Panel className="wide"><Head kicker="REAL MARKET EVIDENCE" title={symbol} badge={market?'LIVE RESPONSE':'UNVERIFIED'}/><RealtimeMonitor symbol={symbol}/><DataCards data={market}/><div className="signal-strip"><Signal n="REGIME" v={market?.regime}/><Signal n="SPREAD" v={market?.spread}/><Signal n="ORDER FLOW" v={market?.order_flow}/><Signal n="FRESHNESS" v={market?.timestamp||market?.time}/></div><pre className="evidence-json">{market?safeJson(market):'No provider response. No synthetic candles/prices/signals are rendered.'}</pre></Panel><Panel><Head kicker="RUNTIME" title="Backend truth"/><pre className="evidence-json">{safeJson(health||{status:'unavailable'})}</pre></Panel></div>
+}
+function DataCards({data}:{data:any}){
+ const keys=data?Object.keys(data).slice(0,6):[];
+ return <div className="data-cards">{keys.map(k=><div className="data-card" key={k}><span>{k.replace(/_/g,' ').toUpperCase()}</span><b>{typeof data[k]==='object'?'{…}':String(data[k])}</b></div>)}</div>
+}
 function Signal({n,v}:{n:string,v:any}){return <div><span>{n}</span><b>{v==null?'UNVERIFIED':String(v)}</b></div>}
-function ProviderMatrix({providers}:{providers:any}){if(!providers)return <Empty text="Provider status endpoint unavailable."/>;return <div className="provider-grid">{['ai','binance','oanda'].map(k=>{const p=providers[k]||{};return <div className="provider-card" key={k}><div><b>{k.toUpperCase()}</b><small>{p.provider||k}</small></div><Status ok={p.configured===true}>{p.configured?'CONFIGURED':'NOT CONFIGURED'}</Status><small>{p.practice===true?'PRACTICE MODE':p.live_enabled===true?'LIVE ENABLED':'LIVE BLOCKED'}</small></div>})}</div>}
-function Council({symbol}:{symbol:string}){return <Panel className="full"><Head kicker="MULTI-AGENT COUNCIL" title={`Independent evidence / ${symbol}`} badge="GATED"/><div className="agent-grid">{agents.map(a=><div className="agent" key={a}><div className="agent-avatar">{a[0]}</div><div><b>{a}</b><small>Awaiting real evidence</small></div><span>UNVERIFIED</span></div>)}</div><div className="debate"><div><b>BULL</b><span>Requires real evidence</span></div><div className="vs">VS</div><div><b>BEAR</b><span>Requires real evidence</span></div><div className="challenger"><b>ADVERSARIAL CHALLENGER</b><span>Unsupported conclusions are rejected before risk.</span></div></div></Panel>}
+function ProviderMatrix({providers}:{providers:any}){
+ if(!providers)return <Empty text="Provider status endpoint unavailable."/>
+ return <div className="provider-grid">{['ai','binance','oanda'].map(k=>{const p=providers[k]||{};return <div className="provider-card" key={k}><div><b>{k.toUpperCase()}</b><small>{p.provider||k}</small></div><Status ok={p.configured===true}>{p.configured?'CONFIGURED':'NOT CONFIGURED'}</Status><small>{p.practice===true?'PRACTICE MODE':p.live_enabled===true?'LIVE ENABLED':'LIVE BLOCKED'}</small></div>})}</div>
+}
+function Council({symbol}:{symbol:string}){
+ return <Panel className="full"><Head kicker="MULTI-AGENT COUNCIL" title={`Independent evidence / ${symbol}`} badge="GATED"/><div className="agent-grid">{agents.map((a,i)=><div className="agent" key={a}><div className="agent-avatar">{a[0]}</div><div><b>{a}</b><small>Awaiting real evidence</small></div><span>UNVERIFIED</span></div>)}</div><div className="debate"><div><b>BULL</b><span>Requires real evidence</span></div><div className="vs">VS</div><div><b>BEAR</b><span>Requires real evidence</span></div><div className="challenger"><b>ADVERSARIAL CHALLENGER</b><span>Unsupported conclusions are rejected before risk.</span></div></div></Panel>
+}
 function Twin(){return <div className="dashboard-grid"><Panel className="wide twin"><Head kicker="DIGITAL MARKET TWIN" title="Scenario field" badge="INPUT-GATED"/><div className="twin-orbit"><div className="orbit o1"/><div className="orbit o2"/><div className="orbit o3"/><div className="twin-core"><strong>WAIT</strong><small>NO VERIFIED INPUT</small></div></div><div className="scenario-grid">{['BUY','SELL','WAIT','SKIP'].map(x=><div key={x}><b>{x}</b><span>—</span><small>simulation requires real distribution</small></div>)}</div></Panel></div>}
 function Memory(){return <Panel className="full"><Head kicker="PERSISTENT MARKET MEMORY" title="Recall / similarity / outcomes" badge="DATABASE-GATED"/><div className="memory-visual"><div className="memory-node">MEMORY</div>{['REGIMES','FAILURES','SUCCESSES','MACRO','DECISIONS','ASSET BEHAVIOR'].map((x,i)=><div className="memory-chip" style={{['--i' as any]:i}} key={x}>{x}</div>)}</div><Empty text="Similarity retrieval requires populated production memory. The UI intentionally does not invent historical matches." /></Panel>}
 function Lab(){return <div className="dashboard-grid"><Panel className="wide"><Head kicker="AUTONOMOUS RESEARCH LAB" title="Discover → validate → govern" badge="FAIL-CLOSED"/><div className="pipeline">{['DATA LINEAGE','PATTERN DISCOVERY','HYPOTHESIS','PURGED TEST','WALK-FORWARD','MONTE CARLO','PAPER TRADE','GOVERNANCE'].map((x,i)=><div className="pipe" key={x}><span>{String(i+1).padStart(2,'0')}</span><b>{x}</b><em>GATED</em></div>)}</div></Panel><Panel><Head kicker="ANTI-OVERFIT" title="Research guardrails"/><ul className="guard-list"><li>No look-ahead</li><li>Chronological validation</li><li>Purged/embargoed tests</li><li>Dataset lineage</li><li>Uncertainty reporting</li><li>No automatic live rule mutation</li></ul></Panel></div>}
