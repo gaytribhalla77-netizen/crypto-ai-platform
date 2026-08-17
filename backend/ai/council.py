@@ -44,6 +44,12 @@ class TradingCouncil:
 
         impact = str(news.get("impact", "UNKNOWN")).upper()
         nscore = float(news.get("sentiment_score", news.get("score", 0)) or 0)
+        # Market-impact classification is meaningful evidence even when a
+        # sentiment model has no directional score. Keep it bounded so that
+        # one heuristic cannot dominate the multi-agent council.
+        impact_bias = {"POSITIVE": 0.5, "BULLISH": 0.5, "NEGATIVE": -0.5, "BEARISH": -0.5}.get(impact, 0.0)
+        if impact_bias:
+            nscore = (nscore * 0.5) + (impact_bias * 0.5)
         research = news.get("ai_research") or {}
         research_status = str(research.get("status", "unavailable"))
         grounded = research.get("grounded_sources") or research.get("sources") or []
@@ -52,9 +58,11 @@ class TradingCouncil:
         if research_status == "ok" and grounded:
             research_reasons.append(f"Gemini grounded research; sources={len(grounded)}")
             research_conf = max(0.0, min(100.0, research_conf))
-            # Blend deterministic RSS evidence with grounded research instead of
-            # allowing a single model output to dominate the council.
-            nscore = (nscore * 0.45) + ((1 if research.get("impact") == "POSITIVE" else -1 if research.get("impact") == "NEGATIVE" else 0) * (research_conf / 100) * 0.55)
+            research_impact = str(research.get("impact", "")).upper()
+            research_bias = 1 if research_impact in {"POSITIVE", "BULLISH"} else -1 if research_impact in {"NEGATIVE", "BEARISH"} else 0
+            # Blend deterministic RSS/impact evidence with grounded research
+            # instead of allowing a single model output to dominate.
+            nscore = (nscore * 0.45) + (research_bias * (research_conf / 100) * 0.55)
         else:
             research_reasons.append("grounded Gemini research unavailable; RSS only")
         votes.append(AgentVote(
