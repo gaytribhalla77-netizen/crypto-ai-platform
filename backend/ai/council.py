@@ -44,11 +44,24 @@ class TradingCouncil:
 
         impact = str(news.get("impact", "UNKNOWN")).upper()
         nscore = float(news.get("sentiment_score", news.get("score", 0)) or 0)
+        research = news.get("ai_research") or {}
+        research_status = str(research.get("status", "unavailable"))
+        grounded = research.get("grounded_sources") or research.get("sources") or []
+        research_conf = float(research.get("confidence", 0) or 0)
+        research_reasons = ["news/sentiment context", f"impact={impact}"]
+        if research_status == "ok" and grounded:
+            research_reasons.append(f"Gemini grounded research; sources={len(grounded)}")
+            research_conf = max(0.0, min(100.0, research_conf))
+            # Blend deterministic RSS evidence with grounded research instead of
+            # allowing a single model output to dominate the council.
+            nscore = (nscore * 0.45) + ((1 if research.get("impact") == "POSITIVE" else -1 if research.get("impact") == "NEGATIVE" else 0) * (research_conf / 100) * 0.55)
+        else:
+            research_reasons.append("grounded Gemini research unavailable; RSS only")
         votes.append(AgentVote(
             "news",
-            "BUY" if nscore > .2 or impact == "POSITIVE" else "SELL" if nscore < -.2 or impact == "NEGATIVE" else "WAIT",
+            "BUY" if nscore > .2 else "SELL" if nscore < -.2 else "WAIT",
             min(95, 55 + abs(nscore) * 35),
-            ["news/sentiment context", f"impact={impact}"],
+            research_reasons,
         ))
 
         prob = float((ml or {}).get("probability_up", .5) or .5)
