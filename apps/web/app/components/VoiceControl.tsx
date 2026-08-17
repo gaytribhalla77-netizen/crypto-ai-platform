@@ -6,6 +6,8 @@ import { colors, Theme } from '../lib/theme';
 
 type PendingTrade = { side: 'BUY' | 'SELL'; symbol: string; amount_usdt: number };
 
+type VoiceHandler = (text: string) => void;
+
 export default function VoiceControl({
   lang, theme, loggedIn, onSymbolFound, onOrderPlaced,
 }: {
@@ -21,40 +23,51 @@ export default function VoiceControl({
   const [busy, setBusy] = useState(false);
   const [totp, setTotp] = useState('');
   const recognitionRef = useRef<any>(null);
+  const commandHandlerRef = useRef<VoiceHandler | null>(null);
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setSupported(false); return; }
+
     const rec = new SR();
-    // en-IN (not hi-IN) transcribes code-switched Hindi/English speech into
-    // Latin script most reliably in Chrome, which is what the backend's
-    // keyword parser expects (it matches "kharido", not "खरीदो").
+    // Keep code-switched Hindi/English on en-IN because the backend parser
+    // accepts common Latin-script Hindi commands such as "kharido".
     rec.lang = 'en-IN';
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e: any) => {
-      const text = e.results[0][0].transcript;
+      const text = e.results?.[0]?.[0]?.transcript?.trim();
+      if (!text) return;
       setTranscript(text);
-      handleCommand(text);
+      commandHandlerRef.current?.(text);
     };
     rec.onend = () => setListening(false);
     rec.onerror = () => setListening(false);
     recognitionRef.current = rec;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      try { rec.onresult = null; rec.onend = null; rec.onerror = null; rec.abort(); } catch { /* no-op */ }
+      recognitionRef.current = null;
+    };
   }, []);
 
   function speak(text: string) {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
     window.speechSynthesis.speak(u);
   }
 
   function startListening() {
-    if (!recognitionRef.current) return;
+    if (!recognitionRef.current || busy) return;
     setReply('');
     setListening(true);
-    try { recognitionRef.current.start(); } catch { setListening(false); }
+    try {
+      recognitionRef.current.start();
+    } catch {
+      setListening(false);
+    }
   }
 
   async function handleCommand(text: string) {
@@ -110,7 +123,7 @@ export default function VoiceControl({
           const full = await api.intel(intent.symbol);
           onSymbolFound?.(intent.symbol);
           const m = full.market;
-          const parts = [];
+          const parts: string[] = [];
           if (m?.price) parts.push(`$${m.price}, ${m.trend}`);
           if (full.news?.sentiment) parts.push(`${lang === 'hi' ? 'news' : 'news'} ${full.news.sentiment}`);
           if (full.ai_prediction?.status === 'OK') {
@@ -140,6 +153,11 @@ export default function VoiceControl({
     }
   }
 
+  // SpeechRecognition is created once, so it must always call the latest
+  // handler. Without this ref the browser callback keeps the first render's
+  // closure and cannot see pending trades, current language, auth state, etc.
+  commandHandlerRef.current = handleCommand;
+
   function say(text: string) {
     setReply(text);
     speak(text);
@@ -155,7 +173,10 @@ export default function VoiceControl({
       const base = API_BASE.replace(/\/$/, '');
       const h = await fetch(`${base}/health`, { cache: 'no-store' }).then(r => r.json());
       const live = Boolean(h?.live_trading);
-      if (live && !totp) { say(lang === 'hi' ? 'Live trade ke liye 6-digit authenticator code enter karein.' : 'Enter your 6-digit authenticator code for the live trade.'); return; }
+      if (live && !totp) {
+        say(lang === 'hi' ? 'Live trade ke liye 6-digit authenticator code enter karein.' : 'Enter your 6-digit authenticator code for the live trade.');
+        return;
+      }
       const res = await api.placeOrder({
         symbol: pending.symbol, side: pending.side, amount_usdt: pending.amount_usdt,
         price: m.price, quantity,
@@ -166,7 +187,7 @@ export default function VoiceControl({
       say(`${res.status}. ${lang === 'hi' ? 'Order number' : 'Order'} ${res.trade_id}.`);
       onOrderPlaced?.();
     } catch (e: any) {
-      say(e.message);
+      say(e.message || t(lang, 'error'));
     } finally {
       setTotp('');
       setPending(null);
