@@ -23,13 +23,14 @@ export default function VoiceControl({
   const [totp, setTotp] = useState('');
   const recognitionRef = useRef<any>(null);
   const commandHandlerRef = useRef<VoiceHandler | null>(null);
+  const langRef = useRef<Lang>(lang);
+  langRef.current = lang;
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setSupported(false); return; }
 
     const rec = new SR();
-    rec.lang = 'en-IN';
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e: any) => {
@@ -48,6 +49,12 @@ export default function VoiceControl({
     };
   }, []);
 
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
+    }
+  }, [lang]);
+
   function speak(text: string) {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -58,6 +65,7 @@ export default function VoiceControl({
 
   function startListening() {
     if (!recognitionRef.current || busy) return;
+    recognitionRef.current.lang = langRef.current === 'hi' ? 'hi-IN' : 'en-IN';
     setReply('');
     setListening(true);
     try { recognitionRef.current.start(); } catch { setListening(false); }
@@ -173,8 +181,6 @@ export default function VoiceControl({
       setTotp('');
       onOrderPlaced?.();
     } catch (e: any) {
-      // Preserve the pending order so a transient market/API error can be retried
-      // after the user sees the failure instead of silently losing the command.
       say(e.message || t(lang, 'error'));
     } finally {
       setBusy(false);
