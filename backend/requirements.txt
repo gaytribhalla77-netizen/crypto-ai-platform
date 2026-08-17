@@ -1,0 +1,22 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+asyncpg
+aiosqlite
+httpx
+PyJWT
+cryptography
+# Removed dead dependencies: pydantic-settings, redis, python-dotenv.
+# config.py uses os.getenv; the app has no Redis client/import and the
+# docker-compose Redis service has been removed. Re-add Redis only with a
+# concrete Redis-backed feature that imports it.
+
+# ML (ai/ml/) — trains and runs a real, backtested prediction model
+scikit-learn
+pandas
+numpy
+joblib
+
+
+websockets

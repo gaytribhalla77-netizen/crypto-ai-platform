@@ -1,0 +1,72 @@
+.................EE..........                                            [100%]
+==================================== ERRORS ====================================
+________ ERROR at setup of test_duplicate_client_request_id_is_rejected ________
+
+    @pytest_asyncio.fixture
+    async def session():
+>       engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/trading/test_idempotency.py:11: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/engine.py:120: in create_async_engine
+    sync_engine = _create_engine(url, **kw)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:2: in create_engine
+    ???
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/util/deprecations.py:281: in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:617: in create_engine
+    dbapi = dbapi_meth(**dbapi_args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'sqlalchemy.dialects.sqlite.aiosqlite.SQLiteDialect_aiosqlite'>
+
+    @classmethod
+    def import_dbapi(cls) -> AsyncAdapt_aiosqlite_dbapi:
+        return AsyncAdapt_aiosqlite_dbapi(
+>           __import__("aiosqlite"), __import__("sqlite3")
+            ^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       ModuleNotFoundError: No module named 'aiosqlite'
+
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py:450: ModuleNotFoundError
+__________ ERROR at setup of test_different_request_ids_both_succeed ___________
+
+    @pytest_asyncio.fixture
+    async def session():
+>       engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/trading/test_idempotency.py:11: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/ext/asyncio/engine.py:120: in create_async_engine
+    sync_engine = _create_engine(url, **kw)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:2: in create_engine
+    ???
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/util/deprecations.py:281: in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/engine/create.py:617: in create_engine
+    dbapi = dbapi_meth(**dbapi_args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'sqlalchemy.dialects.sqlite.aiosqlite.SQLiteDialect_aiosqlite'>
+
+    @classmethod
+    def import_dbapi(cls) -> AsyncAdapt_aiosqlite_dbapi:
+        return AsyncAdapt_aiosqlite_dbapi(
+>           __import__("aiosqlite"), __import__("sqlite3")
+            ^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       ModuleNotFoundError: No module named 'aiosqlite'
+
+/opt/pyvenv/lib/python3.13/site-packages/sqlalchemy/dialects/sqlite/aiosqlite.py:450: ModuleNotFoundError
+=========================== short test summary info ============================
+ERROR tests/trading/test_idempotency.py::test_duplicate_client_request_id_is_rejected - ModuleNotFoundError: No module named 'aiosqlite'
+ERROR tests/trading/test_idempotency.py::test_different_request_ids_both_succeed - ModuleNotFoundError: No module named 'aiosqlite'
+27 passed, 2 errors in 0.39s

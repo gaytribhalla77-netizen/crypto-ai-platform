@@ -1,0 +1,29 @@
+ROUND 2 FOLLOW-UP FIX RESULTS
+==============================
+
+Remaining finding #1: unused Redis infrastructure
+- Removed redis service from docker-compose.yml.
+- Removed redis from backend depends_on.
+- redis remains absent from backend/requirements.txt.
+- Repo-wide AST scan found no Python redis imports.
+
+Remaining finding #2: shared memory / per-user scoping
+- MarketMemory now requires a positive authenticated user_id.
+- Records are stored at data/market_memory/users/<user_id>.jsonl.
+- The old shared data/market_memory.jsonl is not read or written.
+- /api/advanced/memory/add requires authentication and writes to user scope.
+- /api/advanced/memory/similar now also requires authentication and reads only user scope.
+- Per-record limit: 64 KiB.
+- Per-user file limit: 10 MiB.
+
+Executed verification
+- tests/regression_round2_stdlib.py: 4/4 PASS.
+- All 150 Python files compile: PASS.
+- No Python Redis imports: PASS.
+- No Redis compose service/dependency: PASS.
+- No Redis requirements entry: PASS.
+
+Known limitation
+- Existing records in the old shared data/market_memory.jsonl are intentionally not
+  migrated into any user account because ownership cannot be inferred safely. The
+  new implementation ignores that unscoped file, preventing cross-user leakage.

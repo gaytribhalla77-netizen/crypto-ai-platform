@@ -1,0 +1,6 @@
+# Root install entrypoint for IQ200.
+# Keeps the existing backend dependency set intact while making
+# `pip install -r requirements.txt` sufficient for running the app.
+-r backend/requirements.txt
+pytest
+pytest-asyncio
