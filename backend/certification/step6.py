@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from math import isfinite
 from time import perf_counter
 
-from backtesting.engine import run_backtest
+try:
+    from backtesting.engine import run_backtest
+except ModuleNotFoundError:  # Supports root-level pytest execution.
+    from backend.backtesting.engine import run_backtest
 
 
 @dataclass(frozen=True)
