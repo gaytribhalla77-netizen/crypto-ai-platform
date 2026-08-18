@@ -1,5 +1,6 @@
 import json
 import os
+from urllib.parse import urlparse
 
 import httpx
 
@@ -10,26 +11,44 @@ _ALLOWED_IMPACTS = {"POSITIVE", "NEGATIVE", "NEUTRAL", "UNKNOWN"}
 
 
 def _grounded_sources(candidate: dict) -> list[dict]:
-    """Return only URLs actually supplied by Gemini grounding metadata."""
+    """Return only unique, valid HTTP(S) URLs supplied by Gemini grounding."""
     sources: list[dict] = []
     seen: set[str] = set()
     grounding = candidate.get("groundingMetadata", {}) or {}
     for chunk in grounding.get("groundingChunks", []) or []:
         web = chunk.get("web", {}) or {}
         uri = str(web.get("uri", "")).strip()
-        if not uri or uri in seen:
+        parsed = urlparse(uri)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc or uri in seen:
             continue
         seen.add(uri)
         sources.append({"url": uri, "title": str(web.get("title", "")).strip()})
     return sources
 
 
+def _research_is_usable(result: dict) -> bool:
+    """Fail closed unless research has grounded evidence and usable semantics."""
+    if result.get("status") != "ok":
+        return False
+    if not result.get("grounded_sources"):
+        return False
+    if not isinstance(result.get("summary", ""), str) or not result.get("summary", "").strip():
+        return False
+    if result.get("impact") not in _ALLOWED_IMPACTS:
+        return False
+    try:
+        confidence = float(result.get("confidence", 0))
+    except (TypeError, ValueError):
+        return False
+    return 0 <= confidence <= 100
+
+
 async def _gemini_web_research(symbol: str, headlines: list[dict]) -> dict:
     """Use Gemini Google Search grounding for fresh research only.
 
-    Gemini is deliberately isolated from trading execution.  The function
-    returns evidence and research context; the deterministic risk/execution
-    stack remains the only authority for orders.
+    Gemini is deliberately isolated from trading execution. The function
+    returns evidence and research context; deterministic risk/execution
+    remains the only authority for orders.
     """
     key = os.getenv("GEMINI_API_KEY", "").strip()
     if not key:
@@ -41,29 +60,19 @@ async def _gemini_web_research(symbol: str, headlines: list[dict]) -> dict:
         f"Find the latest market-moving news for {symbol}. Focus on the last 24 hours. "
         "Prioritize primary/official sources and reputable financial reporting. Cover "
         "macro, regulation, ETF flows, Fed/RBI, rates, liquidity, geopolitics, hacks "
-        "and major company events when relevant. Cross-check important claims. "
-        "Do not give a trading order. Return strict JSON with keys: impact, confidence, "
-        "summary, catalysts, risks, sources."
+        "and major company events when relevant. Cross-check important claims and "
+        "prefer multiple independent sources for material claims. Do not give a trading "
+        "order. Return strict JSON with keys: impact, confidence, summary, catalysts, risks."
     )
     payload = {
-        "contents": [{
-            "parts": [{"text": json.dumps({"query": query, "rss_headlines": headlines[:12]})}]
-        }],
-        "systemInstruction": {
-            "parts": [{
-                "text": (
-                    "You are a market research analyst, not a trading executor. "
-                    "Use Google Search grounding for current information. Never invent "
-                    "a source or claim. If evidence is insufficient or conflicting, "
-                    "say so and lower confidence. Return JSON only."
-                )
-            }]
-        },
+        "contents": [{"parts": [{"text": json.dumps({"query": query, "rss_headlines": headlines[:12]})}]}],
+        "systemInstruction": {"parts": [{"text": (
+            "You are a market research analyst, not a trading executor. Use Google Search "
+            "grounding for current information. Never invent a source or claim. If evidence "
+            "is insufficient, stale, or conflicting, say so and lower confidence. Return JSON only."
+        )}]},
         "tools": [{"google_search": {}}],
-        "generationConfig": {
-            "temperature": 0.1,
-            "responseMimeType": "application/json",
-        },
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
@@ -102,10 +111,8 @@ async def _gemini_web_research(symbol: str, headlines: list[dict]) -> dict:
     except (TypeError, ValueError):
         result["confidence"] = 0.0
 
-    # Grounding is required for a successful web-research result. The model's
-    # free-form `sources` field is intentionally never trusted as evidence.
-    if not grounded_sources:
-        result["status"] = "no_grounding_evidence"
+    if not _research_is_usable(result):
+        result["status"] = "insufficient_grounded_evidence"
         result["confidence"] = 0.0
     return result
 

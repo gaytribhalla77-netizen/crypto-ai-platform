@@ -1,6 +1,6 @@
 from ai.council import IQ200Council
 from ai.historical import analyze_historical_context
-from ai.news.service import _grounded_sources
+from ai.news.service import _grounded_sources, _research_is_usable
 from news.impact import NewsImpactAnalyzer
 
 
@@ -50,18 +50,31 @@ def test_council_includes_historical_and_sentiment_agents():
     assert out["chief_judge"]["action"] == "WAIT"
 
 
-def test_grounded_sources_only_accept_web_grounding_urls_and_deduplicate():
+def test_grounded_sources_only_accept_valid_web_urls_and_deduplicate():
     candidate = {
         "groundingMetadata": {
             "groundingChunks": [
                 {"web": {"uri": "https://example.com/a", "title": "A"}},
                 {"web": {"uri": "https://example.com/a", "title": "A duplicate"}},
-                {"web": {"uri": "https://example.com/b", "title": "B"}},
+                {"web": {"uri": "http://example.com/b", "title": "B"}},
+                {"web": {"uri": "javascript:alert(1)", "title": "bad"}},
                 {"text": "not a web source"},
             ]
         }
     }
     assert _grounded_sources(candidate) == [
         {"url": "https://example.com/a", "title": "A"},
-        {"url": "https://example.com/b", "title": "B"},
+        {"url": "http://example.com/b", "title": "B"},
     ]
+
+
+def test_research_is_fail_closed_without_grounded_evidence_or_summary():
+    base = {
+        "status": "ok", "impact": "POSITIVE", "confidence": 80,
+        "grounded_sources": [{"url": "https://example.com", "title": "source"}],
+    }
+    assert not _research_is_usable(base)
+    base["summary"] = "Verified market-moving event."
+    assert _research_is_usable(base)
+    base["confidence"] = 101
+    assert not _research_is_usable(base)
