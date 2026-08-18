@@ -25,6 +25,9 @@ jobs:
       - name: Run Step 6 paper/testnet validation
         env:
           STEP6_AUDIT_DIR: artifacts/step6
+          BINANCE_TESTNET_API_KEY: ${{ secrets.BINANCE_TESTNET_API_KEY }}
+          BINANCE_TESTNET_API_SECRET: ${{ secrets.BINANCE_TESTNET_API_SECRET }}
+          TESTNET_SYMBOL: BTCUSDT
         run: python -m backend.certification.step6_runner --mode "${{ inputs.mode || 'paper' }}" --bars 10000
       - name: Upload Step 6 audit artifacts
         if: always()
