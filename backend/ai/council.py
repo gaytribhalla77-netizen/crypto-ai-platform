@@ -44,27 +44,33 @@ class TradingCouncil:
 
         impact = str(news.get("impact", "UNKNOWN")).upper()
         nscore = float(news.get("sentiment_score", news.get("score", 0)) or 0)
-        # Market-impact classification is meaningful evidence even when a
-        # sentiment model has no directional score. Keep it bounded so that
-        # one heuristic cannot dominate the multi-agent council.
         impact_bias = {"POSITIVE": 0.5, "BULLISH": 0.5, "NEGATIVE": -0.5, "BEARISH": -0.5}.get(impact, 0.0)
         if impact_bias:
             nscore = (nscore * 0.5) + (impact_bias * 0.5)
+
         research = news.get("ai_research") or {}
         research_status = str(research.get("status", "unavailable"))
-        grounded = research.get("grounded_sources") or research.get("sources") or []
+        grounded = research.get("grounded_sources") or []
         research_conf = float(research.get("confidence", 0) or 0)
+        research_summary = str(research.get("summary", "")).strip()
+        research_impact = str(research.get("impact", "UNKNOWN")).upper()
+        valid_research_impact = research_impact in {"POSITIVE", "NEGATIVE", "NEUTRAL", "UNKNOWN", "BULLISH", "BEARISH"}
+        grounded_research = research_status == "ok" and bool(grounded) and bool(research_summary) and valid_research_impact
+        research_conf = max(0.0, min(100.0, research_conf))
+        research_conflict = grounded_research and impact in {"POSITIVE", "NEGATIVE", "BULLISH", "BEARISH"} and research_impact in {"POSITIVE", "NEGATIVE", "BULLISH", "BEARISH"} and (
+            (impact in {"POSITIVE", "BULLISH"} and research_impact in {"NEGATIVE", "BEARISH"})
+            or (impact in {"NEGATIVE", "BEARISH"} and research_impact in {"POSITIVE", "BULLISH"})
+        )
         research_reasons = ["news/sentiment context", f"impact={impact}"]
-        if research_status == "ok" and grounded:
+        if grounded_research:
             research_reasons.append(f"Gemini grounded research; sources={len(grounded)}")
-            research_conf = max(0.0, min(100.0, research_conf))
-            research_impact = str(research.get("impact", "")).upper()
-            research_bias = 1 if research_impact in {"POSITIVE", "BULLISH"} else -1 if research_impact in {"NEGATIVE", "BEARISH"} else 0
-            # Blend deterministic RSS/impact evidence with grounded research
-            # instead of allowing a single model output to dominate.
-            nscore = (nscore * 0.45) + (research_bias * (research_conf / 100) * 0.55)
+            if research_conflict:
+                research_reasons.append("grounded research conflicts with deterministic RSS impact")
+            else:
+                research_bias = 1 if research_impact in {"POSITIVE", "BULLISH"} else -1 if research_impact in {"NEGATIVE", "BEARISH"} else 0
+                nscore = (nscore * 0.45) + (research_bias * (research_conf / 100) * 0.55)
         else:
-            research_reasons.append("grounded Gemini research unavailable; RSS only")
+            research_reasons.append("grounded Gemini research unavailable/invalid; RSS only")
         votes.append(AgentVote(
             "news",
             "BUY" if nscore > .2 else "SELL" if nscore < -.2 else "WAIT",
@@ -144,6 +150,13 @@ class TradingCouncil:
             "veto": any(v.veto for v in votes),
             "contradiction_score": contradiction,
             "counts": counts,
+            "research_policy": {
+                "grounded": grounded_research,
+                "source_count": len(grounded),
+                "conflict": research_conflict,
+                "provider": research.get("provider", "none") if grounded_research else "none",
+            },
+            "execution_authority": "DETERMINISTIC_RISK_ENGINE",
         }
 
 
@@ -170,9 +183,15 @@ class IQ200Council(TradingCouncil):
             objections.append("regime veto is active")
         if base.get("contradiction_score", 0):
             objections.append("BUY/SELL evidence conflicts")
+        if base.get("research_policy", {}).get("conflict"):
+            objections.append("research/RSS impact conflict")
         if not objections:
             objections.append("no hard contradiction detected; still subject to risk")
-        judge_action = "WAIT" if base.get("veto") or base.get("contradiction_score", 0) else base["action"]
+        judge_action = "WAIT" if (
+            base.get("veto")
+            or base.get("contradiction_score", 0)
+            or base.get("research_policy", {}).get("conflict")
+        ) else base["action"]
         return {
             **base,
             "bull_case": bull,
@@ -181,6 +200,6 @@ class IQ200Council(TradingCouncil):
             "chief_judge": {
                 "action": judge_action,
                 "confidence": base["confidence"],
-                "reason": "risk/regime veto and contradiction checks applied",
+                "reason": "risk/regime veto, research provenance and contradiction checks applied",
             },
         }
