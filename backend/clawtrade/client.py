@@ -11,15 +11,14 @@ class ClawtradeError(RuntimeError):
 
 
 class ClawtradeClient:
-    """Controlled client for a separately running Clawtrade instance.
+    """Controlled client for the internal Clawtrade service.
 
-    This integration is analysis-first. The crypto-ai-platform remains the
-    authority for authentication, risk, execution and live-trading gates.
-    No Clawtrade order endpoint is exposed here.
+    crypto-ai-platform remains the authority for authentication, risk,
+    execution and live-trading gates. No Clawtrade order endpoint is exposed.
     """
 
     def __init__(self, base_url: str | None = None, timeout: float | None = None):
-        self.base_url = (base_url or os.getenv("CLAWTRADE_BASE_URL", "http://127.0.0.1:9090")).rstrip("/")
+        self.base_url = (base_url or os.getenv("CLAWTRADE_BASE_URL", "http://clawtrade:8899")).rstrip("/")
         self.timeout = timeout or float(os.getenv("CLAWTRADE_TIMEOUT_SECONDS", "10"))
         self.token = os.getenv("CLAWTRADE_API_TOKEN", "")
 
