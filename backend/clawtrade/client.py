@@ -45,7 +45,9 @@ class ClawtradeClient:
         })
 
     async def chat(self, message: str) -> dict[str, Any]:
-        return await self._post("/api/v1/chat", {"message": message})
+        return await self._post("/api/v1/chat", {
+            "messages": [{"role": "user", "content": message}]
+        })
 
     async def agents(self) -> Any:
         return await self._get("/api/v1/agents")
