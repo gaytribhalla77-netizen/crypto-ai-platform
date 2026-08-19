@@ -26,6 +26,11 @@ class Settings:
     watchlist_symbols: tuple = tuple(
         x.strip().upper() for x in os.getenv("WATCHLIST_SYMBOLS", "BTCUSDT,ETHUSDT").split(",") if x.strip()
     )
+    # Clawtrade is an optional external agent service. It is deliberately
+    # disabled by default and has no authority over this platform's orders.
+    clawtrade_enabled: bool = os.getenv("CLAWTRADE_ENABLED", "false").lower() == "true"
+    clawtrade_base_url: str = os.getenv("CLAWTRADE_BASE_URL", "http://127.0.0.1:9090")
+    clawtrade_timeout_seconds: float = float(os.getenv("CLAWTRADE_TIMEOUT_SECONDS", "10"))
 
 
 settings = Settings()
@@ -42,9 +47,6 @@ if settings.live_trading and settings.secret_key == _DEV_DEFAULT_SECRET:
 if settings.live_trading:
     if settings.broker not in {"binance", "oanda"}:
         raise RuntimeError("LIVE_TRADING requires BROKER=binance or BROKER=oanda.")
-    # Multi-user deployments keep broker credentials in the encrypted vault,
-    # so global broker keys are not required at startup. Single-operator mode
-    # may use environment credentials as a deliberate fallback.
     if settings.single_operator_mode:
         if settings.broker == "binance" and not (os.getenv("BINANCE_API_KEY") and os.getenv("BINANCE_API_SECRET")):
             raise RuntimeError("SINGLE_OPERATOR_MODE + LIVE_TRADING requires Binance environment credentials.")
