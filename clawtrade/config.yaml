@@ -1,0 +1,50 @@
+server:
+  host: 0.0.0.0
+  port: 8899
+
+database:
+  path: /app/data/clawtrade.db
+
+vault:
+  path: /app/data/vault.enc
+
+risk:
+  max_risk_per_trade: 0.02
+  max_daily_loss: 0.05
+  max_positions: 5
+  max_leverage: 10
+  default_mode: paper
+
+exchanges: []
+
+agent:
+  enabled: true
+  auto_trade: false
+  confirmation: true
+  min_confidence: 0.7
+  scan_interval: 30
+  watchlist:
+    - BTC/USDT
+    - ETH/USDT
+  sub_agents: []
+  model:
+    primary: ""
+    max_tokens: 4096
+    temperature: 0.7
+
+mcp:
+  servers: []
+
+notifications:
+  telegram:
+    enabled: false
+    token: ""
+    chat_id: ""
+  discord:
+    enabled: false
+    webhook_url: ""
+  alerts:
+    trade_executed: false
+    risk_alert: true
+    pnl_update: false
+    system_alert: true
