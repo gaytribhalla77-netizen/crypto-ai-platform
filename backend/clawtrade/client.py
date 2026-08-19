@@ -11,10 +11,11 @@ class ClawtradeError(RuntimeError):
 
 
 class ClawtradeClient:
-    """Controlled, analysis-first client for a separate Clawtrade instance.
+    """Controlled client for a separately running Clawtrade instance.
 
-    The existing platform remains authoritative for authentication, risk,
-    execution and live-trading gates. No Clawtrade order endpoint is exposed.
+    This integration is analysis-first. The crypto-ai-platform remains the
+    authority for authentication, risk, execution and live-trading gates.
+    No Clawtrade order endpoint is exposed here.
     """
 
     def __init__(self, base_url: str | None = None, timeout: float | None = None):
@@ -43,11 +44,34 @@ class ClawtradeClient:
             "symbol": symbol, "depth": depth, "exchange": exchange
         })
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def chat(self, message: str) -> dict[str, Any]:
+        return await self._post("/api/v1/chat", {"message": message})
+
+    async def agents(self) -> Any:
+        return await self._get("/api/v1/agents")
+
+    async def agent_events(self, limit: int = 50) -> Any:
+        return await self._get("/api/v1/agents/events", {"limit": limit})
+
+    async def backtest(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._post("/api/v1/backtest", payload)
+
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
                     f"{self.base_url}{path}", params=params or {}, headers=self._headers()
+                )
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            raise ClawtradeError(f"Clawtrade request failed: {exc}") from exc
+
+    async def _post(self, path: str, body: dict[str, Any]) -> Any:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}{path}", json=body, headers=self._headers()
                 )
             response.raise_for_status()
             return response.json()
