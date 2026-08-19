@@ -8,12 +8,31 @@ services:
     ports: ["5432:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
 
+  clawtrade:
+    build:
+      context: ./clawtrade
+    environment:
+      CLAWTRADE_CONFIG: /app/config.yaml
+    expose:
+      - "8899"
+    volumes:
+      - clawtrade_data:/app/data
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
     env_file: .env
-    depends_on: [postgres]
+    environment:
+      CLAWTRADE_ENABLED: ${CLAWTRADE_ENABLED:-false}
+      CLAWTRADE_BASE_URL: ${CLAWTRADE_BASE_URL:-http://clawtrade:8899}
+      CLAWTRADE_TIMEOUT_SECONDS: ${CLAWTRADE_TIMEOUT_SECONDS:-10}
+      CLAWTRADE_API_TOKEN: ${CLAWTRADE_API_TOKEN:-}
+    depends_on:
+      - postgres
+      - clawtrade
     ports: ["8000:8000"]
 
 volumes:
   postgres_data:
+  clawtrade_data:
