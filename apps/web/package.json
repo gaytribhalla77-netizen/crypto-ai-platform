@@ -1,7 +1,12 @@
 {
   "name": "crypto-ai-web",
   "private": true,
-  "scripts": {"dev": "next dev", "build": "next build", "start": "next start"},
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "e2e": "playwright test"
+  },
   "dependencies": {
     "next": "latest",
     "react": "latest",
@@ -11,6 +16,7 @@
     "typescript": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "@playwright/test": "latest"
   }
 }
