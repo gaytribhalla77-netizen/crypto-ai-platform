@@ -22,3 +22,11 @@ async def test_voice_recognizes_security_audit_without_side_effects():
     assert result["intent"] == "security_audit"
     assert result["requires_authorization"] is True
     assert result["requires_confirmation"] is True
+
+
+@pytest.mark.asyncio
+async def test_voice_authorization_is_explicit_and_carries_target():
+    result = await VoiceService().handle("I authorize this security test https://example.com")
+    assert result["intent"] == "security_audit_authorized"
+    assert result["authorization"] == "i authorize this security test"
+    assert result["target"] == "https://example.com"
