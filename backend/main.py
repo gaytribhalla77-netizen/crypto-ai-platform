@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
@@ -29,10 +30,12 @@ from auth.routes import router as auth_router
 from database.session import init_db
 from core.config import settings
 from monitoring.health import health_registry
+from monitoring.http import RequestObservabilityMiddleware
 
 logger = logging.getLogger("main")
 app = FastAPI(title="AI Crypto Trading Platform", version="1.6.0")
 
+app.add_middleware(RequestObservabilityMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
@@ -46,11 +49,22 @@ for r in [router, news_router, dashboard_router, voice_router, ml_router, intel_
     app.include_router(r)
 
 _background_tasks: list[asyncio.Task] = []
+_started_at = time.monotonic()
 
 
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    health_registry.set("database", "ok", "initializing")
+    try:
+        await init_db()
+        health_registry.set("database", "ok", "initialized")
+    except Exception as exc:
+        health_registry.set("database", "error", type(exc).__name__)
+        raise
+
+    health_registry.set("api", "ok", "startup complete")
+    health_registry.set("workers", "ok" if settings.enable_workers else "disabled", "configured")
+
     if settings.enable_workers:
         from workers.health_monitor import HealthMonitorWorker
         from workers.market_scanner import market_scanner
@@ -81,9 +95,11 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
+    snapshot = health_registry.snapshot()
     return {
-        "status": "ok",
+        "status": "ok" if snapshot["status"] != "error" else "degraded",
         "version": "1.6.0",
+        "uptime_seconds": round(time.monotonic() - _started_at, 2),
         "live_trading": settings.live_trading,
         "paper_trading": settings.paper_trading,
         "testnet": not settings.live_trading,
@@ -91,5 +107,5 @@ async def health():
         "fail_closed": True,
         "workers_enabled": settings.enable_workers,
         "clawtrade_enabled": settings.clawtrade_enabled,
-        "dependencies": health_registry.snapshot(),
+        "dependencies": snapshot,
     }
