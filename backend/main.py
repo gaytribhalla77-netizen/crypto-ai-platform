@@ -73,17 +73,20 @@ async def startup():
         from workers.market_scanner import market_scanner
         from workers.position_monitor import PositionMonitorWorker
         from workers.order_reconciliation import OrderReconciliationWorker
+        from security.continuous_self_audit import ContinuousSelfAuditor
         from api.realtime_routes import _monitor as realtime_monitor
         health_worker = HealthMonitorWorker()
         position_worker = PositionMonitorWorker()
         reconciliation_worker = OrderReconciliationWorker()
+        self_auditor = ContinuousSelfAuditor(interval_seconds=int(os.getenv("SECURITY_SELF_AUDIT_INTERVAL_SECONDS", "900")))
         realtime_monitor_task = asyncio.create_task(realtime_monitor.start())
         _background_tasks.append(asyncio.create_task(health_worker.run_forever()))
         _background_tasks.append(asyncio.create_task(market_scanner.run_forever()))
         _background_tasks.append(asyncio.create_task(position_worker.run_forever()))
         _background_tasks.append(asyncio.create_task(reconciliation_worker.run_forever()))
+        _background_tasks.append(asyncio.create_task(self_auditor.run_forever()))
         _background_tasks.append(realtime_monitor_task)
-        logger.info("Background workers started: health_monitor, market_scanner, position_monitor, order_reconciliation")
+        logger.info("Background workers started: health_monitor, market_scanner, position_monitor, order_reconciliation, continuous_security_self_audit")
     else:
         logger.info("ENABLE_WORKERS is false — no background monitoring is running.")
 
