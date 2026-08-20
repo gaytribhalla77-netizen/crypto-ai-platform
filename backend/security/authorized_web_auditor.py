@@ -45,21 +45,19 @@ def _validate_target(target: str) -> tuple[str, str]:
         ip = ipaddress.ip_address(address)
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
             raise TargetSafetyError("Private, local, reserved, or otherwise non-public targets are blocked.")
-    normalized = parsed._replace(fragment="").geturl()
-    return normalized, host
+    return parsed._replace(fragment="").geturl(), host
 
 
 def _severity_rank(value: str) -> int:
     return {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}[value]
 
 
-class AuthorizedWebAuditor:
-    """Non-destructive web security checks for explicitly authorized targets.
+def _cookie_attributes(cookie: str) -> set[str]:
+    return {part.strip().split("=", 1)[0].lower() for part in cookie.split(";")[1:]}
 
-    This auditor never attempts authentication bypass, exploitation, credential
-    theft, persistence, data extraction, or destructive actions. It is designed
-    for owner-approved assessments and responsible disclosure.
-    """
+
+class AuthorizedWebAuditor:
+    """Non-destructive web security checks for explicitly authorized targets."""
 
     def __init__(self, timeout_seconds: float = 10.0):
         self.timeout_seconds = timeout_seconds
@@ -95,18 +93,18 @@ class AuthorizedWebAuditor:
             if server and any(ch.isdigit() for ch in server):
                 findings.append(Finding("WEB-007", "low", "Server version disclosure", "The Server header appears to expose a version number.", f"Observed: {server[:120]}", "Remove unnecessary product/version details from response headers."))
 
-            set_cookie = response.headers.get_list("set-cookie")
-            for cookie in set_cookie:
-                low = cookie.lower()
-                if "secure" not in low and target.startswith("https://"):
-                    findings.append(Finding("WEB-008", "medium", "Cookie without Secure attribute", "A cookie was set over an HTTPS target without the Secure attribute.", cookie.split(";", 1)[0][:160], "Mark sensitive cookies Secure."))
-                if "httponly" not in low:
-                    findings.append(Finding("WEB-009", "low", "Cookie without HttpOnly attribute", "A cookie was set without HttpOnly.", cookie.split(";", 1)[0][:160], "Use HttpOnly for cookies that do not need JavaScript access."))
-                if "samesite" not in low:
-                    findings.append(Finding("WEB-010", "low", "Cookie without SameSite attribute", "A cookie was set without SameSite.", cookie.split(";", 1)[0][:160], "Set an appropriate SameSite value for session and security-sensitive cookies."))
+            for cookie in response.headers.get_list("set-cookie"):
+                attrs = _cookie_attributes(cookie)
+                name = cookie.split("=", 1)[0].strip()[:80]
+                if "secure" not in attrs and target.startswith("https://"):
+                    findings.append(Finding("WEB-008", "medium", "Cookie without Secure attribute", "A cookie was set over an HTTPS target without Secure.", f"Cookie: {name}", "Mark sensitive cookies Secure."))
+                if "httponly" not in attrs:
+                    findings.append(Finding("WEB-009", "low", "Cookie without HttpOnly attribute", "A cookie was set without HttpOnly.", f"Cookie: {name}", "Use HttpOnly for cookies that do not need JavaScript access."))
+                if not any(attr.startswith("samesite") for attr in attrs):
+                    findings.append(Finding("WEB-010", "low", "Cookie without SameSite attribute", "A cookie was set without SameSite.", f"Cookie: {name}", "Set an appropriate SameSite value for session and security-sensitive cookies."))
 
-            if headers.get("access-control-allow-origin", "").strip() == "*" and "access-control-allow-credentials" in headers:
-                findings.append(Finding("WEB-011", "medium", "Permissive CORS with credentials", "The response combines wildcard CORS origin with credential support.", "Access-Control-Allow-Origin: * plus Access-Control-Allow-Credentials", "Restrict allowed origins and avoid wildcard origins for credentialed requests."))
+            if headers.get("access-control-allow-origin", "").strip() == "*" and headers.get("access-control-allow-credentials", "").lower() == "true":
+                findings.append(Finding("WEB-011", "medium", "Permissive CORS with credentials", "The response combines wildcard CORS origin with credential support.", "Access-Control-Allow-Origin: * plus Allow-Credentials: true", "Restrict allowed origins and avoid wildcard origins for credentialed requests."))
 
             sec_txt = await client.get(f"{parsed_origin(target)}/.well-known/security.txt")
             if sec_txt.status_code >= 400:
@@ -125,13 +123,7 @@ class AuthorizedWebAuditor:
             "host": host,
             "status_code": response.status_code,
             "findings": [asdict(item) for item in findings],
-            "summary": {
-                "critical": sum(x.severity == "critical" for x in findings),
-                "high": sum(x.severity == "high" for x in findings),
-                "medium": sum(x.severity == "medium" for x in findings),
-                "low": sum(x.severity == "low" for x in findings),
-                "info": sum(x.severity == "info" for x in findings),
-            },
+            "summary": {level: sum(x.severity == level for x in findings) for level in ("critical", "high", "medium", "low", "info")},
             "limitations": [
                 "This is a non-destructive surface audit, not a proof of exploitability.",
                 "Authentication, authorization/IDOR, business-logic, and application-specific vulnerabilities require an authorized test plan and suitable test accounts.",
@@ -160,7 +152,7 @@ def send_disclosure_email(report: dict, recipient: str) -> None:
     lines = [f"Authorized security assessment for {report['target']}", "", "Findings:"]
     for finding in report["findings"]:
         lines.extend([f"- [{finding['severity'].upper()}] {finding['title']} ({finding['id']})", f"  Evidence: {finding['evidence']}", f"  Remediation: {finding['remediation']}"])
-    lines.extend(["", "This disclosure contains non-destructive observations only."])
+    lines.append("\nThis disclosure contains non-destructive observations only.")
     msg.set_content("\n".join(lines))
     with smtplib.SMTP(host, port, timeout=20) as smtp:
         smtp.starttls()
