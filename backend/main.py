@@ -23,6 +23,7 @@ from api.v06_routes import router as v06_router
 from api.v09_15_routes import router as v09_router
 from api.advanced_routes import router as advanced_router
 from api.security_routes import router as security_router
+from api.web_audit_routes import router as web_audit_router
 from api.real_routes import router as real_router
 from api.realtime_routes import router as realtime_router
 from api.clawtrade_routes import router as clawtrade_router
@@ -46,7 +47,7 @@ app.add_middleware(
 )
 
 for r in [router, news_router, dashboard_router, voice_router, ml_router, intel_router, trading_router, testnet_router,
-          v05_router, v06_router, v09_router, advanced_router, security_router, real_router, realtime_router,
+          v05_router, v06_router, v09_router, advanced_router, security_router, web_audit_router, real_router, realtime_router,
           clawtrade_router, notification_router, strategy_router, auth_router]:
     app.include_router(r)
 
