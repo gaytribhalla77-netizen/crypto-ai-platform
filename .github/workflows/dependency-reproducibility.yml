@@ -1,0 +1,40 @@
+name: Dependency Reproducibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pip-tools
+        run: python -m pip install --upgrade pip pip-tools
+      - name: Resolve backend dependency snapshot
+        run: pip-compile --quiet --output-file=/tmp/backend-requirements.lock backend/requirements.txt
+      - name: Install resolved snapshot
+        run: python -m pip install -r /tmp/backend-requirements.lock
+      - name: Compile backend
+        run: python -m compileall -q backend workers tests conftest.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Generate reproducible npm lock snapshot
+        working-directory: apps/web
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify dependency graph is installable
+        working-directory: apps/web
+        run: npm ci --ignore-scripts
