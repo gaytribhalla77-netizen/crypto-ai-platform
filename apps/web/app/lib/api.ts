@@ -49,7 +49,7 @@ export const api = {
   securityAuditScan: (target: string, authorization: string) => request(`/api/security-audit/scan`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, authorization })
   }, true),
-  securityAuditDisclose: (recipient: string, report: dict, authorization: string) => request(`/api/security-audit/disclose`, {
+  securityAuditDisclose: (recipient: string, report: Record<string, any>, authorization: string) => request(`/api/security-audit/disclose`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient, report, authorization })
   }, true),
   mlPredict: (symbol: string) => request(`/api/ml/predict/${symbol}`, { method: 'POST' }),
