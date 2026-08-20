@@ -1,5 +1,6 @@
 import pytest
 
+from backend.api.web_audit_routes import _valid_email
 from backend.security.authorized_web_auditor import AuthorizedWebAuditor, AuthorizationError, TargetSafetyError
 from backend.voice.service import VoiceService
 
@@ -30,3 +31,13 @@ async def test_voice_authorization_is_explicit_and_carries_target():
     assert result["intent"] == "security_audit_authorized"
     assert result["authorization"] == "i authorize this security test"
     assert result["target"] == "https://example.com"
+
+
+def test_disclosure_email_validation_is_bounded_and_non_regex():
+    assert _valid_email("security@example.com") is True
+    assert _valid_email("security.team+bug@example.co.in") is True
+    assert _valid_email("not-an-email") is False
+    assert _valid_email("a@@example.com") is False
+    assert _valid_email("a@example..com") is False
+    assert _valid_email("a @example.com") is False
+    assert _valid_email("a@" + ("x" * 300) + ".com") is False
