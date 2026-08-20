@@ -23,6 +23,7 @@ from api.v06_routes import router as v06_router
 from api.v09_15_routes import router as v09_router
 from api.advanced_routes import router as advanced_router
 from api.security_routes import router as security_router
+from api.web_audit_routes import router as web_audit_router
 from api.real_routes import router as real_router
 from api.realtime_routes import router as realtime_router
 from api.clawtrade_routes import router as clawtrade_router
@@ -46,7 +47,7 @@ app.add_middleware(
 )
 
 for r in [router, news_router, dashboard_router, voice_router, ml_router, intel_router, trading_router, testnet_router,
-          v05_router, v06_router, v09_router, advanced_router, security_router, real_router, realtime_router,
+          v05_router, v06_router, v09_router, advanced_router, security_router, web_audit_router, real_router, realtime_router,
           clawtrade_router, notification_router, strategy_router, auth_router]:
     app.include_router(r)
 
@@ -72,17 +73,20 @@ async def startup():
         from workers.market_scanner import market_scanner
         from workers.position_monitor import PositionMonitorWorker
         from workers.order_reconciliation import OrderReconciliationWorker
+        from security.continuous_self_audit import ContinuousSelfAuditor
         from api.realtime_routes import _monitor as realtime_monitor
         health_worker = HealthMonitorWorker()
         position_worker = PositionMonitorWorker()
         reconciliation_worker = OrderReconciliationWorker()
+        self_auditor = ContinuousSelfAuditor(interval_seconds=int(os.getenv("SECURITY_SELF_AUDIT_INTERVAL_SECONDS", "900")))
         realtime_monitor_task = asyncio.create_task(realtime_monitor.start())
         _background_tasks.append(asyncio.create_task(health_worker.run_forever()))
         _background_tasks.append(asyncio.create_task(market_scanner.run_forever()))
         _background_tasks.append(asyncio.create_task(position_worker.run_forever()))
         _background_tasks.append(asyncio.create_task(reconciliation_worker.run_forever()))
+        _background_tasks.append(asyncio.create_task(self_auditor.run_forever()))
         _background_tasks.append(realtime_monitor_task)
-        logger.info("Background workers started: health_monitor, market_scanner, position_monitor, order_reconciliation")
+        logger.info("Background workers started: health_monitor, market_scanner, position_monitor, order_reconciliation, continuous_security_self_audit")
     else:
         logger.info("ENABLE_WORKERS is false — no background monitoring is running.")
 
