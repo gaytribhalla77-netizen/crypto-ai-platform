@@ -108,10 +108,13 @@ def manage_position(entry, current, config=None):
     if entry <= 0 or current <= 0:
         return TradePlan('NO_TRADE','NONE',0,None,None,None,0,'Invalid price.')
     pnl = (current/entry-1)*100
-    if pnl >= cfg.gross_target_pct:
+    # Floating-point prices can land a few ulps below the configured boundary.
+    # Treat an economically equal target/stop as hit rather than delaying the exit.
+    epsilon = 1e-9
+    if pnl + epsilon >= cfg.gross_target_pct:
         return TradePlan('TAKE_PROFIT','ROTATION_EXIT',1,current,current,entry*(1-cfg.max_loss_pct/100),cfg.target_net_pct,
             f'Target reached at {pnl:.2f}% gross. Book profit, then rescan for a fresh strategy.')
-    if pnl <= -cfg.max_loss_pct:
+    if pnl - epsilon <= -cfg.max_loss_pct:
         return TradePlan('SELL','RISK_EXIT',1,current,None,None,0,
             f'Risk stop reached at {pnl:.2f}%. Exit and block revenge re-entry.')
     return TradePlan('HOLD','POSITION_MANAGEMENT',.60,current,entry*(1+cfg.gross_target_pct/100),entry*(1-cfg.max_loss_pct/100),0,
