@@ -2,16 +2,25 @@ import os, hmac, hashlib, time
 from urllib.parse import urlencode
 import httpx
 
+
 class BinanceTestnetClient:
+    """Authenticated Binance Spot Testnet REST client.
+
+    Testnet credentials are intentionally isolated from production credentials.
+    This client never falls back to BINANCE_API_KEY/BINANCE_API_SECRET.
+    """
+
     BASE = "https://testnet.binance.vision"
 
     def __init__(self, api_key: str | None = None, api_secret: str | None = None):
-        self.key = api_key or os.getenv("BINANCE_API_KEY", "")
-        self.secret = api_secret or os.getenv("BINANCE_API_SECRET", "")
+        self.key = api_key or os.getenv("BINANCE_TESTNET_API_KEY", "")
+        self.secret = api_secret or os.getenv("BINANCE_TESTNET_API_SECRET", "")
 
     def _require_credentials(self):
         if not self.key or not self.secret:
-            raise RuntimeError("Binance testnet credentials are missing.")
+            raise RuntimeError(
+                "Binance Testnet credentials are missing. Set BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET."
+            )
 
     def _signed(self, params):
         self._require_credentials()

@@ -1,8 +1,8 @@
 """Step 6 paper/testnet validation runner.
 
-Safety: this runner never submits real-money orders. It records market observations
-and simulated executions. A future authenticated testnet adapter can be plugged in
-behind the explicit TESTNET flag without changing certification semantics.
+Paper mode is fully offline. Testnet mode adds a read-only authenticated
+Binance Testnet connectivity check (account + exchange filters) and never
+submits an order. Real execution remains outside automated certification.
 """
 from __future__ import annotations
 
@@ -21,9 +21,14 @@ except ModuleNotFoundError:
     from backend.backtesting.engine import run_backtest
 
 try:
-    from certification.step6 import run_offline_step6_gates
+    from certification.step6 import run_offline_step6_gates, Step6Gate
 except ModuleNotFoundError:
-    from backend.certification.step6 import run_offline_step6_gates
+    from backend.certification.step6 import run_offline_step6_gates, Step6Gate
+
+try:
+    from certification.testnet_connectivity import validate_testnet
+except ModuleNotFoundError:
+    from backend.certification.testnet_connectivity import validate_testnet
 
 
 AUDIT_DIR = Path(os.getenv("STEP6_AUDIT_DIR", "artifacts/step6"))
@@ -54,7 +59,7 @@ def append_audit(run_id: str, event: str, mode: str, payload: dict[str, Any]) ->
 def certify(run_id: str, mode: str, gates: list[Any], duration_s: float) -> dict[str, Any]:
     passed = bool(gates) and all(g.passed for g in gates)
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": run_id,
         "timestamp": _utc(),
         "mode": mode,
@@ -68,21 +73,36 @@ def certify(run_id: str, mode: str, gates: list[Any], duration_s: float) -> dict
     return result
 
 
-def run(mode: str = "paper", bars: int = 10_000) -> dict[str, Any]:
+async def run_async(mode: str = "paper", bars: int = 10_000) -> dict[str, Any]:
     if mode not in {"paper", "testnet"}:
         raise ValueError("mode must be paper or testnet")
-    # No live-money order path exists here. Testnet mode remains observation/simulation
-    # until an authenticated sandbox adapter is explicitly wired into the project.
+
     run_id = datetime.now(timezone.utc).strftime("step6-%Y%m%dT%H%M%SZ")
     started = time.perf_counter()
     append_audit(run_id, "run_started", mode, {"bars": bars})
 
     gates = run_offline_step6_gates() if bars == 10_000 else []
-    duration = time.perf_counter() - started
     append_audit(run_id, "offline_gates", mode, {"gates": [asdict(g) for g in gates]})
+
+    if mode == "testnet":
+        try:
+            symbol = os.getenv("TESTNET_SYMBOL", "BTCUSDT")
+            connectivity = await validate_testnet(symbol)
+            gates.append(Step6Gate("binance_testnet_connectivity", True, f"authenticated; symbol={symbol.upper()}"))
+            append_audit(run_id, "testnet_connectivity", mode, connectivity)
+        except Exception as exc:
+            gates.append(Step6Gate("binance_testnet_connectivity", False, str(exc)))
+            append_audit(run_id, "testnet_connectivity_failed", mode, {"error": str(exc)})
+
+    duration = time.perf_counter() - started
     result = certify(run_id, mode, gates, duration)
     append_audit(run_id, "run_finished", mode, {"status": result["status"]})
     return result
+
+
+def run(mode: str = "paper", bars: int = 10_000) -> dict[str, Any]:
+    import asyncio
+    return asyncio.run(run_async(mode, bars))
 
 
 def main() -> int:
