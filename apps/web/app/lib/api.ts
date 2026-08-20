@@ -49,6 +49,9 @@ export const api = {
   securityAuditScan: (target: string, authorization: string) => request(`/api/security-audit/scan`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, authorization })
   }, true),
+  securityAuditDisclose: (recipient: string, report: dict, authorization: string) => request(`/api/security-audit/disclose`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient, report, authorization })
+  }, true),
   mlPredict: (symbol: string) => request(`/api/ml/predict/${symbol}`, { method: 'POST' }),
   mlAccuracy: (symbol: string) => request(`/api/ml/accuracy/${symbol}`),
   placeOrder: (params: { symbol: string; side: 'BUY' | 'SELL'; amount_usdt: number; price: number; quantity: number; stop_loss_pct?: number; take_profit_pct?: number; client_request_id?: string; totp_code?: string; live?: boolean; }) => params.live
