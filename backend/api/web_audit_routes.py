@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+import re
 
 from auth.dependencies import CurrentUser, get_current_user
 from security.authorized_web_auditor import AuthorizedWebAuditor, AuthorizationError, TargetSafetyError, send_disclosure_email
 
 router = APIRouter(prefix="/api/security-audit", tags=["security-audit"])
 _auditor = AuthorizedWebAuditor()
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 class AuditRequest(BaseModel):
@@ -14,7 +16,7 @@ class AuditRequest(BaseModel):
 
 
 class DisclosureRequest(BaseModel):
-    recipient: EmailStr
+    recipient: str
     report: dict
     authorization: str
 
@@ -34,16 +36,13 @@ async def scan_target(payload: AuditRequest, user: CurrentUser = Depends(get_cur
 
 @router.post("/disclose")
 async def disclose(payload: DisclosureRequest, user: CurrentUser = Depends(get_current_user)):
-    """Send a responsible-disclosure report through configured SMTP.
-
-    The caller must explicitly authorize the disclosure action. The endpoint
-    never discovers or guesses recipients and never sends without a recipient
-    supplied by the operator.
-    """
+    """Send a responsible-disclosure report through configured SMTP."""
     if payload.authorization.strip().lower() != "i-authorize-this-disclosure":
         raise HTTPException(status_code=403, detail="Explicit disclosure authorization is required.")
+    if not _EMAIL_RE.fullmatch(payload.recipient.strip()):
+        raise HTTPException(status_code=400, detail="A valid disclosure recipient email is required.")
     try:
-        send_disclosure_email(payload.report, str(payload.recipient))
+        send_disclosure_email(payload.report, payload.recipient.strip())
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return {"sent": True, "recipient": str(payload.recipient)}
+    return {"sent": True, "recipient": payload.recipient.strip()}
