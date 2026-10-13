@@ -1,0 +1,105 @@
+name: Unpack Project Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      archive_path:
+        description: 'Path to ZIP archive in the repository (leave empty to use the first ZIP found)'
+        required: false
+        type: string
+        default: ''
+      destination:
+        description: 'Directory to unpack into (use . for repository root)'
+        required: false
+        type: string
+        default: '.'
+      delete_archive:
+        description: 'Delete the ZIP after a successful unpack'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    name: Unpack archive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Locate archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${{ inputs.archive_path }}"
+
+          if [ -z "$archive" ]; then
+            archive="$(find . -type f -iname '*.zip' -not -path './.git/*' | head -n 1 || true)"
+          fi
+
+          if [ -z "$archive" ]; then
+            echo 'No ZIP archive found. Provide archive_path when running the workflow.' >&2
+            exit 1
+          fi
+
+          archive="${archive#./}"
+          if [ ! -f "$archive" ]; then
+            echo "Archive not found: $archive" >&2
+            exit 1
+          fi
+
+          echo "path=$archive" >> "$GITHUB_OUTPUT"
+          echo "Using archive: $archive"
+
+      - name: Validate ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${{ steps.archive.outputs.path }}"
+          unzip -t "$archive"
+
+      - name: Unpack archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${{ steps.archive.outputs.path }}"
+          destination="${{ inputs.destination }}"
+
+          mkdir -p "$destination"
+          unzip -o "$archive" -d "$destination"
+
+      - name: Show changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+
+      - name: Remove archive when requested
+        if: ${{ inputs.delete_archive }}
+        shell: bash
+        run: rm -f "${{ steps.archive.outputs.path }}"
+
+      - name: Commit unpacked files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+
+          git commit -m 'ci: unpack project archive'
+          git push origin HEAD:main
